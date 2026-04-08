@@ -9,5 +9,8 @@
   "dryRun": false,
   "allowSpikeFallback": false,
   "pollIntervalMs": 60000,
-  "statePath": "/optional/override/for/assistant-state.json"
+  "statePath": "/optional/override/for/assistant-state.json",
+  "memoryPath": "/optional/override/for/assistant-memory.json",
+  "autoApplyMemory": false,
+  "memoryLearn": false
 }

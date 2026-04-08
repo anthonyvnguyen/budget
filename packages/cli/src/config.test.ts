@@ -102,6 +102,20 @@ describe('resolveConfig', () => {
       expect(config.syncId).toBe('budget-1');
       expect(config.encryptionPassword).toBe('file-enc');
     });
+
+    it('ignores unknown keys so assistant can share actual.config.json', async () => {
+      mockConfigFile({
+        serverUrl: 'http://file',
+        password: 'filepw',
+        categoryId: 'some-uuid',
+        dryRun: false,
+      });
+
+      const config = await resolveConfig({});
+
+      expect(config.serverUrl).toBe('http://file');
+      expect(config.password).toBe('filepw');
+    });
   });
 
   describe('defaults', () => {

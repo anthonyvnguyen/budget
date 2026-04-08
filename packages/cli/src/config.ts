@@ -43,28 +43,36 @@ const configFileKeys: readonly string[] = [
   'encryptionPassword',
 ];
 
-function validateConfigFileContent(value: unknown): ConfigFileContent {
+/**
+ * Reads only CLI-known string fields. Extra keys (e.g. assistant-only options in
+ * the same `actual.config.json`) are ignored so one file can serve both tools.
+ */
+function pickCliConfigFields(value: unknown): ConfigFileContent {
   if (!isRecord(value)) {
-    throw new Error(
-      'Invalid config file: expected an object with keys: ' +
-        configFileKeys.join(', '),
-    );
+    throw new Error('Invalid config file: expected an object');
   }
-  for (const key of Object.keys(value)) {
-    if (!configFileKeys.includes(key)) {
-      throw new Error(`Invalid config file: unknown key "${key}"`);
+  const out: ConfigFileContent = {};
+  for (const key of configFileKeys) {
+    const v = value[key];
+    if (v === undefined) {
+      continue;
     }
-    if (value[key] !== undefined && typeof value[key] !== 'string') {
+    if (typeof v !== 'string') {
       throw new Error(
-        `Invalid config file: key "${key}" must be a string, got ${typeof value[key]}`,
+        `Invalid config file: key "${key}" must be a string, got ${typeof v}`,
       );
     }
+    out[key as keyof ConfigFileContent] = v;
   }
-  return value as ConfigFileContent;
+  return out;
 }
 
 async function loadConfigFile(): Promise<ConfigFileContent> {
   const explorer = cosmiconfig('actual', {
+    // cosmiconfig v9 defaults to searching only `process.cwd()` unless `stopDir` is set.
+    // `yarn workspace … exec` often runs with cwd in `packages/<pkg>/`, so we walk up to the
+    // user home (same as cosmiconfig’s global search) to find repo-root `actual.config.json`.
+    stopDir: homedir(),
     searchPlaces: [
       'package.json',
       '.actualrc',
@@ -78,7 +86,7 @@ async function loadConfigFile(): Promise<ConfigFileContent> {
   });
   const result = await explorer.search();
   if (result && !result.isEmpty) {
-    return validateConfigFileContent(result.config);
+    return pickCliConfigFields(result.config);
   }
   return {};
 }

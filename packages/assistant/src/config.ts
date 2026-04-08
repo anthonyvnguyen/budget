@@ -5,8 +5,9 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
+import { defaultMemoryPath } from './memory.ts';
 import { defaultStatePath } from './state.ts';
 
 export type AssistantConfigFile = {
@@ -25,6 +26,12 @@ export type AssistantConfigFile = {
   pollIntervalMs?: number;
   /** Override path for assistant-state.json; env: ACTUAL_ASSISTANT_STATE_PATH */
   statePath?: string;
+  /** Payee → category memory file; env: ACTUAL_ASSISTANT_MEMORY_PATH */
+  memoryPath?: string;
+  /** If true, poll applies memory-suggested category via API (not dry-run). Env: ACTUAL_ASSISTANT_AUTO_APPLY_MEMORY */
+  autoApplyMemory?: boolean;
+  /** If true, spike records payee→category after a successful write. Env: ACTUAL_ASSISTANT_MEMORY_LEARN */
+  memoryLearn?: boolean;
 };
 
 export type AssistantConfig = {
@@ -41,6 +48,12 @@ export type AssistantConfig = {
   pollIntervalMs: number;
   /** Resolved path to persisted seen/prompted transaction ids */
   statePath: string;
+  /** Resolved path to payee → category memory */
+  memoryPath: string;
+  /** Poll: call updateTransaction when memory matches an uncategorized payee */
+  autoApplyMemory: boolean;
+  /** Spike: append to memory file after categorizing a transaction */
+  memoryLearn: boolean;
 };
 
 function trimEnv(name: string): string | undefined {
@@ -92,7 +105,27 @@ function defaultConfigPath(): string {
 }
 
 /**
- * Resolve optional JSON config path: explicit env, then ./actual.config.json if present.
+ * Yarn workspace scripts often run with cwd in `packages/<pkg>/`, not the monorepo root.
+ * Walk up until we find `actual.config.json` (or hit the filesystem root).
+ */
+function findActualConfigWalkingUp(startDir: string): string | undefined {
+  let dir = resolve(startDir);
+  for (;;) {
+    const candidate = join(dir, 'actual.config.json');
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      return undefined;
+    }
+    dir = parent;
+  }
+}
+
+/**
+ * Resolve optional JSON config path: explicit env, then ./actual.config.json in cwd,
+ * then the same filename in a parent directory (monorepo root).
  */
 export function resolveConfigFilePath(): string | undefined {
   const fromEnv =
@@ -100,11 +133,11 @@ export function resolveConfigFilePath(): string | undefined {
   if (fromEnv) {
     return fromEnv;
   }
-  const fallback = defaultConfigPath();
-  if (existsSync(fallback)) {
-    return fallback;
+  const inCwd = defaultConfigPath();
+  if (existsSync(inCwd)) {
+    return inCwd;
   }
-  return undefined;
+  return findActualConfigWalkingUp(process.cwd());
 }
 
 function loadFileLayer(): AssistantConfigFile {
@@ -177,6 +210,20 @@ function mergeConfig(
     ? statePathOverride
     : defaultStatePath(dataDir);
 
+  const memoryPathOverride =
+    trimEnv('ACTUAL_ASSISTANT_MEMORY_PATH') ?? file.memoryPath?.trim();
+  const memoryPath = memoryPathOverride
+    ? memoryPathOverride
+    : defaultMemoryPath(dataDir);
+
+  const autoApplyMemory =
+    parseBoolEnv('ACTUAL_ASSISTANT_AUTO_APPLY_MEMORY') === true ||
+    file.autoApplyMemory === true;
+
+  const memoryLearn =
+    parseBoolEnv('ACTUAL_ASSISTANT_MEMORY_LEARN') === true ||
+    file.memoryLearn === true;
+
   return {
     serverURL,
     password: password ?? '',
@@ -189,6 +236,9 @@ function mergeConfig(
     allowSpikeFallback,
     pollIntervalMs,
     statePath,
+    memoryPath,
+    autoApplyMemory,
+    memoryLearn,
   };
 }
 

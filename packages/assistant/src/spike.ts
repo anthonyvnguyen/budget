@@ -20,6 +20,9 @@
  *   ACTUAL_SPIKE_CATEGORY_ID / ACTUAL_ASSISTANT_CATEGORY_ID — category uuid
  *   ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1 — dev-only: first visible non-income category; may reassign
  *     an arbitrary transaction if none are uncategorized (old spike behavior)
+ *
+ * Memory (optional): ACTUAL_ASSISTANT_MEMORY_LEARN=1 or memoryLearn in config — after a successful
+ *   categorization, append payee → category to assistant-memory.json (see poll / memory.ts).
  */
 
 import { mkdirSync } from 'node:fs';
@@ -28,6 +31,11 @@ import * as api from '@actual-app/api';
 
 import { loadAssistantConfig, requireConnectionFields } from './config.ts';
 import type { AssistantConfig } from './config.ts';
+import {
+  loadPersistedMemory,
+  recordPayeeCategory,
+  savePersistedMemory,
+} from './memory.ts';
 import {
   defaultTransactionDateRange,
   findFirstUncategorizedTransaction,
@@ -47,6 +55,20 @@ async function applyCategory(
   }
   await api.updateTransaction(txId, { category: categoryId });
   console.log(`Updated ${label} transaction ${txId} → category ${categoryId}`);
+}
+
+function learnSpikeMemory(
+  config: AssistantConfig,
+  payee: string | undefined,
+  categoryId: string,
+) {
+  if (config.dryRun || !config.memoryLearn) {
+    return;
+  }
+  const before = loadPersistedMemory(config.memoryPath);
+  recordPayeeCategory(before, payee, categoryId);
+  savePersistedMemory(config.memoryPath, before);
+  console.log('[spike] memory: stored payee → category mapping');
 }
 
 async function main() {
@@ -101,6 +123,7 @@ async function main() {
         config,
         `uncategorized (${firstUncat.accountName})`,
       );
+      learnSpikeMemory(config, firstUncat.payee, categoryId);
       return;
     }
 
@@ -125,6 +148,7 @@ async function main() {
       config,
       `fallback (${first.account.name}, allowSpikeFallback)`,
     );
+    learnSpikeMemory(config, first.tx.payee, categoryId);
   } finally {
     await api.shutdown();
   }
@@ -160,13 +184,16 @@ async function findFirstTransaction(
   accounts: Awaited<ReturnType<typeof api.getAccounts>>,
   startStr: string,
   endStr: string,
-): Promise<{ account: (typeof accounts)[0]; tx: { id: string } } | null> {
+): Promise<{
+  account: (typeof accounts)[0];
+  tx: { id: string; payee?: string };
+} | null> {
   const openAccounts = accounts.filter(a => !a.closed);
   for (const account of openAccounts) {
     const rows = await api.getTransactions(account.id, startStr, endStr);
     const tx = rows.find(r => !r.tombstone && !r.is_child);
     if (tx) {
-      return { account, tx };
+      return { account, tx: { id: tx.id, payee: tx.payee ?? undefined } };
     }
   }
   return null;
