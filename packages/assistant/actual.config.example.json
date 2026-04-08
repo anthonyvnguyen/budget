@@ -3,5 +3,9 @@
   "password": "your-server-password",
   "syncId": "your-sync-id-from-settings-advanced",
   "dataDir": "/path/to/local-cache",
-  "encryptionPassword": "only-if-budget-uses-e2e-encryption"
+  "encryptionPassword": "only-if-budget-uses-e2e-encryption",
+  "categoryId": "uuid-of-category-for-spike-tests",
+  "transactionId": "optional-uuid-to-update-one-transaction-only",
+  "dryRun": false,
+  "allowSpikeFallback": false
 }

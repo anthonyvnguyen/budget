@@ -12,15 +12,15 @@ Design document for tracking development. **Actual** remains the source of truth
 
 | Field | Value |
 |-------|--------|
-| **Last updated** | 2026-04-08 |
-| **Current focus** | P1 — config module, dry-run, and safer categorization policy than the spike. |
+| **Last updated** | 2026-04-07 |
+| **Current focus** | P2 — poll loop + persisted “seen” / “prompted” transaction ids. |
 
 ### Phase checklist
 
 Use `[x]` / `[ ]` in git as you complete work.
 
 - [x] **P0** — Spike: `@actual-app/api` connect, find uncategorized transaction, `updateTransaction` (`yarn assistant:spike`, `packages/assistant/src/spike.ts`)
-- [ ] **P1** — Config module; dry-run mode; no blind auto-category in “real” mode
+- [x] **P1** — Config module; dry-run mode; no blind auto-category in “real” mode
 - [ ] **P2** — Poll loop + persisted “seen” / “prompted” transaction ids
 - [ ] **P3** — Memory store (payee → category) + suggest before asking
 - [ ] **P4** — Messaging adapter (one channel) + confirm/correct loop
@@ -30,21 +30,36 @@ Use `[x]` / `[ ]` in git as you complete work.
 
 | Date | Entry |
 |------|--------|
+| 2026-04-07 | Docs: [`docs/local-startup.md`](local-startup.md) (scenario-based startup); expanded “Getting back to development”; §4.2 / §8; link from reboot section. |
+| 2026-04-07 | **P1 complete:** `packages/assistant/src/config.ts` loads optional `actual.config.json` (or `ACTUAL_ASSISTANT_CONFIG` / `ACTUAL_CONFIG_PATH`) merged with env; `--dry-run` / `ACTUAL_DRY_RUN`; writes require explicit category (`ACTUAL_SPIKE_CATEGORY_ID`, `ACTUAL_ASSISTANT_CATEGORY_ID`, or `categoryId` in file) unless `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` (legacy spike: first non-income + optional reassignment when nothing uncategorized). |
 | 2026-04-08 | P0 complete: spike run against test server; transaction categorized via API; `yarn build:api` ordered after `loot-core` decl build. Design doc added. |
 
 ### Getting back to development after a reboot
 
-Do this in order when you sit down cold:
+For a **scenario-based** guide (web only vs web + sync vs desktop vs docs vs API tools), see **[`docs/local-startup.md`](local-startup.md)**.
 
-1. **Open a terminal** and go to the repo: `cd` → your `Budget` (or clone) directory.
-2. **Install deps** if the repo is new on this machine or `package.json` / `yarn.lock` changed: `yarn install` (from repo root).
-3. **Start Actual** in dev (browser + sync server): `yarn start:server-dev` — leave this running.
-4. **Build the API bundle** if needed (first time after clone, after `git clean`, or if `packages/api/dist/` is missing): `yarn build:api`.
-5. **Point the spike at your server** — same as before, e.g. `export ACTUAL_PASSWORD='…'` and `export ACTUAL_SYNC_ID='…'` (or use a local `.actualrc` / `actual.config.json`; those patterns are gitignored).
-6. **Smoke test:** `yarn assistant:spike` — should connect and exit cleanly (or categorize if you have uncategorized txns).
-7. **Re-read** [Progress](#progress) and `docs/assistant-design.md` to remember what phase you were on.
+Do this in order when you sit down cold (all **yarn** commands from the **repo root**):
 
-Your budget data lives in Actual’s sync + local cache (`ACTUAL_DATA_DIR`, default under `~/.actual-assistant/data` for the spike); you do not lose it by rebooting if the server data directory and your account are unchanged.
+1. **Terminal + repo:** `cd` to your `Budget` directory (or clone and `cd` into it).
+2. **Install deps** if needed (new machine, or `package.json` / `yarn.lock` changed): `yarn install`.
+3. **Run the Actual web app + sync server** — leave this terminal running:
+   - `yarn start:server-dev`
+   - Opens the **frontend** (typically **http://localhost:3001**) and runs the **sync server** (typically **http://localhost:5006**). Use the URL your terminal prints if it differs.
+   - **Web UI only** (no sync server): `yarn start`.
+4. **Build the API** when the assistant or CLI needs it (first time after clone, after `git clean`, or if `packages/api/dist/` is missing): `yarn build:api`. If `yarn assistant:spike` errors on missing modules under `packages/api/dist/`, run this again.
+5. **Connection settings (password, sync id, server URL)** — pick one or combine (env **overrides** file):
+   - **Recommended:** `actual.config.json` in the **repo root** (same folder you run yarn from). It is **gitignored** so secrets stay local. Minimal shape: `serverUrl`, `password`, `syncId`. Copy optional fields from `packages/assistant/actual.config.example.json` if you need `dataDir`, `encryptionPassword`, `categoryId`, etc.
+   - **Or** export `ACTUAL_SERVER_URL`, `ACTUAL_PASSWORD`, `ACTUAL_SYNC_ID` (and `ACTUAL_ENCRYPTION_PASSWORD` if the budget uses E2E encryption).
+   - The **spike** defaults `serverUrl` to `http://localhost:5006` if unset; the **official CLI** does **not** — set `serverUrl` in `actual.config.json` or `ACTUAL_SERVER_URL` for CLI commands.
+6. **Optional — list category ids (CLI):** after `yarn build:cli`, from repo root:
+   - `yarn workspace @actual-app/cli exec actual categories list`
+   - There is no global `actual` on `PATH` unless you install it yourself; use `yarn workspace … exec` as above. Default output is JSON with an `id` per category.
+7. **Smoke test the assistant:** from repo root, with `password` / `syncId` set (file or env):
+   - `yarn assistant:spike --dry-run` — no writes; needs a category id (`ACTUAL_SPIKE_CATEGORY_ID` or `categoryId` in config) **or** `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` for legacy behavior.
+   - Real write: `yarn assistant:spike` (same flags/env as above, without `--dry-run`).
+8. **Re-read** [Progress](#progress) and this file to see which phase you were on.
+
+**Data:** Your budget lives in Actual’s sync + local API cache (`ACTUAL_DATA_DIR`, default `~/.actual-assistant/data` for the spike). Rebooting does not wipe it if the server data directory and account are unchanged.
 
 ---
 
@@ -124,7 +139,10 @@ Future handlers may also use: `getRules`, `createRule`, `aqlQuery` / `q`, `sync`
 
 ### 4.2 Configuration & secrets
 
-- Server URL, password or session token, sync id, optional E2E password — **environment variables** or ignored config files (see repo `.gitignore` for `.actualrc` patterns).
+- Server URL, password or session token, sync id, optional E2E password — **environment variables** or ignored config files (see repo `.gitignore` for `.actualrc` and **`actual.config.json`**).
+- **`actual.config.json`** in the **working directory** where you run commands (usually the repo root), or a path via **`ACTUAL_ASSISTANT_CONFIG`** / **`ACTUAL_CONFIG_PATH`**: merged with env; **env wins** for overrides. Full example: `packages/assistant/actual.config.example.json`. The assistant spike resolves **`./actual.config.json`** automatically when present.
+- **Dry-run:** `ACTUAL_DRY_RUN=1` or `--dry-run` on the spike — connects and logs intended `updateTransaction` calls without writing.
+- **Explicit category policy:** real writes need a category id (`ACTUAL_SPIKE_CATEGORY_ID`, `ACTUAL_ASSISTANT_CATEGORY_ID`, or `categoryId` in file) unless `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` (development / legacy spike behavior only).
 - Local cache directory for API (`ACTUAL_DATA_DIR` or default under `~/.actual-assistant/data`).
 
 ### 4.3 Detection strategy
@@ -189,7 +207,7 @@ Adjust phases as you learn (e.g. P3 before P4 if you want memory without chat fi
 ## 8. References
 
 - Upstream: [Actual Budget](https://github.com/actualbudget/actual), [API docs](https://actualbudget.org/docs/api/).
-- Official CLI (same API): `packages/cli` — useful for manual testing (`accounts list`, `transactions list`, `transactions update`).
+- Official CLI (same API): `packages/cli` — build with `yarn build:cli`, then e.g. `yarn workspace @actual-app/cli exec actual categories list` (set `serverUrl` or `ACTUAL_SERVER_URL`). See [Getting back to development](#getting-back-to-development-after-a-reboot).
 
 ---
 
