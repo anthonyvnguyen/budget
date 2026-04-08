@@ -12,7 +12,7 @@ Design document for tracking development. **Actual** remains the source of truth
 
 | Field             | Value                                                         |
 | ----------------- | ------------------------------------------------------------- |
-| **Last updated**  | 2026-04-07                                                    |
+| **Last updated**  | 2026-04-08                                                    |
 | **Current focus** | P3 — memory store (payee → category) + suggest before asking. |
 
 ### Phase checklist
@@ -30,6 +30,7 @@ Use `[x]` / `[ ]` in git as you complete work.
 
 | Date       | Entry                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-04-08 | Docs: aligned [`docs/local-startup.md`](local-startup.md) scenario **F** (spike vs poll, state file path, first-run noise); §4.1 / §4.2 here (poll uses API reads only; poll env + file keys).                                                                                                                                                                                                                                                              |
 | 2026-04-07 | **P2 complete:** `yarn assistant:poll` — interval from `ACTUAL_ASSISTANT_POLL_INTERVAL_MS` or `pollIntervalMs` (default 60s); state file `assistant-state.json` under `dataDir` or `ACTUAL_ASSISTANT_STATE_PATH`; tracks seen + prompted transaction ids; `--once` for a single iteration; SIGINT/SIGTERM stops the loop. Shared uncategorized scan in `scan.ts`.                                                                                           |
 | 2026-04-07 | Docs: [`docs/local-startup.md`](local-startup.md) (scenario-based startup); expanded “Getting back to development”; §4.2 / §8; link from reboot section.                                                                                                                                                                                                                                                                                                    |
 | 2026-04-07 | **P1 complete:** `packages/assistant/src/config.ts` loads optional `actual.config.json` (or `ACTUAL_ASSISTANT_CONFIG` / `ACTUAL_CONFIG_PATH`) merged with env; `--dry-run` / `ACTUAL_DRY_RUN`; writes require explicit category (`ACTUAL_SPIKE_CATEGORY_ID`, `ACTUAL_ASSISTANT_CATEGORY_ID`, or `categoryId` in file) unless `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` (legacy spike: first non-income + optional reassignment when nothing uncategorized). |
@@ -56,11 +57,12 @@ Do this in order when you sit down cold (all **yarn** commands from the **repo r
    - `yarn workspace @actual-app/cli exec actual categories list`
    - There is no global `actual` on `PATH` unless you install it yourself; use `yarn workspace … exec` as above. Default output is JSON with an `id` per category.
 7. **Smoke test the assistant:** from repo root, with `password` / `syncId` set (file or env):
-   - `yarn assistant:spike --dry-run` — no writes; needs a category id (`ACTUAL_SPIKE_CATEGORY_ID` or `categoryId` in config) **or** `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` for legacy behavior.
-   - Real write: `yarn assistant:spike` (same flags/env as above, without `--dry-run`).
+   - **`yarn assistant:poll --once`** — no category required; scans uncategorized transactions and updates **`assistant-state.json`** (seen / prompted ids). Does not call `updateTransaction`. Good check that sync and detection work; a **first** run with an empty state file may log one line per uncategorized transaction in the scan window.
+   - **`yarn assistant:spike --dry-run`** — no writes to Actual; needs a category id (`ACTUAL_SPIKE_CATEGORY_ID` or `categoryId` in config) **or** `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` for legacy behavior.
+   - Real write: **`yarn assistant:spike`** (same flags/env as above, without `--dry-run`).
 8. **Re-read** [Progress](#progress) and this file to see which phase you were on.
 
-**Data:** Your budget lives in Actual’s sync + local API cache (`ACTUAL_DATA_DIR`, default `~/.actual-assistant/data` for the spike). Rebooting does not wipe it if the server data directory and account are unchanged.
+**Data:** Your budget lives in Actual’s sync + local API cache (`ACTUAL_DATA_DIR`, default `~/.actual-assistant/data` for the assistant). The poll stores **`assistant-state.json`** under that directory unless **`ACTUAL_ASSISTANT_STATE_PATH`** overrides it. Rebooting does not wipe cache or state if paths and account are unchanged.
 
 ---
 
@@ -127,12 +129,13 @@ Do this in order when you sit down cold (all **yarn** commands from the **repo r
 
 ### 4.1 Actual programmatic API (`@actual-app/api`)
 
-Already used in the **spike** (`yarn assistant:spike`):
+Used in the **spike** (`yarn assistant:spike`) and **poll** (`yarn assistant:poll`):
 
 - `init` / `shutdown`
 - `downloadBudget` (sync id + server auth)
-- `getAccounts`, `getTransactions`, `getCategories`
-- `updateTransaction` (e.g. set `category`)
+- `getAccounts`, `getTransactions` — spike and poll (poll lists all uncategorized in range via `packages/assistant/src/scan.ts`)
+- `getCategories` — spike (category resolution for writes)
+- `updateTransaction` — **spike only** when not dry-run; poll does not write transactions
 
 **Build prerequisite (repo root):** `yarn build:api` (builds `loot-core` declarations, then the API package).
 
@@ -142,8 +145,9 @@ Future handlers may also use: `getRules`, `createRule`, `aqlQuery` / `q`, `sync`
 
 - Server URL, password or session token, sync id, optional E2E password — **environment variables** or ignored config files (see repo `.gitignore` for `.actualrc` and **`actual.config.json`**).
 - **`actual.config.json`** in the **working directory** where you run commands (usually the repo root), or a path via **`ACTUAL_ASSISTANT_CONFIG`** / **`ACTUAL_CONFIG_PATH`**: merged with env; **env wins** for overrides. Full example: `packages/assistant/actual.config.example.json`. The assistant spike resolves **`./actual.config.json`** automatically when present.
-- **Dry-run:** `ACTUAL_DRY_RUN=1` or `--dry-run` on the spike — connects and logs intended `updateTransaction` calls without writing.
-- **Explicit category policy:** real writes need a category id (`ACTUAL_SPIKE_CATEGORY_ID`, `ACTUAL_ASSISTANT_CATEGORY_ID`, or `categoryId` in file) unless `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` (development / legacy spike behavior only).
+- **Dry-run:** `ACTUAL_DRY_RUN=1` or `--dry-run` on the spike — connects and logs intended `updateTransaction` calls without writing. The poll also respects dry-run for **Actual** writes (it performs none today); local **`assistant-state.json`** still updates so deduping behavior matches a real run.
+- **Explicit category policy:** real **spike** writes need a category id (`ACTUAL_SPIKE_CATEGORY_ID`, `ACTUAL_ASSISTANT_CATEGORY_ID`, or `categoryId` in file) unless `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` (development / legacy spike behavior only). **Poll** does not assign categories.
+- **Poll / state file:** `ACTUAL_ASSISTANT_POLL_INTERVAL_MS` or `pollIntervalMs` in JSON (default **60000** ms). **`ACTUAL_ASSISTANT_STATE_PATH`** or `statePath` in JSON — otherwise state is **`{dataDir}/assistant-state.json`** where `dataDir` comes from `ACTUAL_DATA_DIR` or the default under `~/.actual-assistant/data`.
 - Local cache directory for API (`ACTUAL_DATA_DIR` or default under `~/.actual-assistant/data`).
 
 ### 4.3 Detection strategy
@@ -163,7 +167,7 @@ Future handlers may also use: `getRules`, `createRule`, `aqlQuery` / `q`, `sync`
 
 - **Single channel to start** (recommend picking one: Telegram bot, Slack app, Discord, etc.).
 - Flow: outbound structured message + inbound parse (confirm / category alias / numeric index from a generated list).
-- **Not** implemented in the spike; spike only proves API write path.
+- **Not** implemented yet; the spike proves the **`updateTransaction`** write path. The poll only records **seen** / **prompted** transaction ids locally until a channel exists.
 
 ### 4.6 Persistence for “memory”
 
