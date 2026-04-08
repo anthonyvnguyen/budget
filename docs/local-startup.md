@@ -8,12 +8,12 @@ All commands assume a **terminal at the repository root**, **Node.js ≥ 22**, a
 
 ## One-time or occasional setup
 
-| Situation | What to run |
-|-----------|-------------|
-| **New clone or dependencies changed** | `yarn install` |
-| **Husky / git hooks** (if you use them) | `yarn prepare` once after install |
-| **Assistant or Node `@actual-app/api` fails** (missing or broken `packages/api/dist/`) | `yarn build:api` |
-| **Official CLI** (`actual …` via Yarn) | `yarn build:cli` |
+| Situation                                                                              | What to run                       |
+| -------------------------------------------------------------------------------------- | --------------------------------- |
+| **New clone or dependencies changed**                                                  | `yarn install`                    |
+| **Husky / git hooks** (if you use them)                                                | `yarn prepare` once after install |
+| **Assistant or Node `@actual-app/api` fails** (missing or broken `packages/api/dist/`) | `yarn build:api`                  |
+| **Official CLI** (`actual …` via Yarn)                                                 | `yarn build:cli`                  |
 
 ---
 
@@ -89,6 +89,7 @@ These use **`@actual-app/api`** in Node — **not** a replacement for opening th
 3. From the repo root, set connection details via **`actual.config.json`** (gitignored) and/or environment variables. See **`docs/assistant-design.md`** (configuration section and “Getting back to development”).
 4. Examples:
    - `yarn assistant:spike --dry-run`
+   - `yarn assistant:poll --once` — one poll iteration (uncategorized scan + `assistant-state.json`); omit `--once` for a long-running loop
    - `yarn workspace @actual-app/cli exec actual categories list`
 
 The CLI requires an explicit **`serverUrl`** (or **`ACTUAL_SERVER_URL`**); the spike defaults the server URL if unset.
@@ -97,15 +98,15 @@ The CLI requires an explicit **`serverUrl`** (or **`ACTUAL_SERVER_URL`**); the s
 
 ## Quick reference
 
-| Goal | Command |
-|------|---------|
+| Goal                                        | Command                 |
+| ------------------------------------------- | ----------------------- |
 | Browser + sync (most common for full stack) | `yarn start:server-dev` |
-| Browser only | `yarn start` |
-| Sync server process only | `yarn start:server` |
-| Desktop Electron | `yarn start:desktop` |
-| Docs | `yarn start:docs` |
-| Rebuild API for Node tools | `yarn build:api` |
-| Rebuild CLI | `yarn build:cli` |
+| Browser only                                | `yarn start`            |
+| Sync server process only                    | `yarn start:server`     |
+| Desktop Electron                            | `yarn start:desktop`    |
+| Docs                                        | `yarn start:docs`       |
+| Rebuild API for Node tools                  | `yarn build:api`        |
+| Rebuild CLI                                 | `yarn build:cli`        |
 
 ---
 

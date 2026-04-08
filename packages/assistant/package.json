@@ -5,7 +5,8 @@
   "description": "Sidecar assistant experiments (categorization spike)",
   "type": "module",
   "scripts": {
-    "spike": "node --experimental-strip-types ./src/spike.ts"
+    "spike": "node --experimental-strip-types ./src/spike.ts",
+    "poll": "node --experimental-strip-types ./src/poll.ts"
   },
   "dependencies": {
     "@actual-app/api": "workspace:*"

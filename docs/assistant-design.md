@@ -10,10 +10,10 @@ Design document for tracking development. **Actual** remains the source of truth
 
 ## Progress
 
-| Field | Value |
-|-------|--------|
-| **Last updated** | 2026-04-07 |
-| **Current focus** | P2 — poll loop + persisted “seen” / “prompted” transaction ids. |
+| Field             | Value                                                         |
+| ----------------- | ------------------------------------------------------------- |
+| **Last updated**  | 2026-04-07                                                    |
+| **Current focus** | P3 — memory store (payee → category) + suggest before asking. |
 
 ### Phase checklist
 
@@ -21,18 +21,19 @@ Use `[x]` / `[ ]` in git as you complete work.
 
 - [x] **P0** — Spike: `@actual-app/api` connect, find uncategorized transaction, `updateTransaction` (`yarn assistant:spike`, `packages/assistant/src/spike.ts`)
 - [x] **P1** — Config module; dry-run mode; no blind auto-category in “real” mode
-- [ ] **P2** — Poll loop + persisted “seen” / “prompted” transaction ids
+- [x] **P2** — Poll loop + persisted “seen” / “prompted” transaction ids (`yarn assistant:poll`, `packages/assistant/src/poll.ts`, `state.ts`, `scan.ts`)
 - [ ] **P3** — Memory store (payee → category) + suggest before asking
 - [ ] **P4** — Messaging adapter (one channel) + confirm/correct loop
 - [ ] **P5** — Optional: mirror rules to Actual; metrics / logging
 
 ### Log (newest first)
 
-| Date | Entry |
-|------|--------|
-| 2026-04-07 | Docs: [`docs/local-startup.md`](local-startup.md) (scenario-based startup); expanded “Getting back to development”; §4.2 / §8; link from reboot section. |
+| Date       | Entry                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-04-07 | **P2 complete:** `yarn assistant:poll` — interval from `ACTUAL_ASSISTANT_POLL_INTERVAL_MS` or `pollIntervalMs` (default 60s); state file `assistant-state.json` under `dataDir` or `ACTUAL_ASSISTANT_STATE_PATH`; tracks seen + prompted transaction ids; `--once` for a single iteration; SIGINT/SIGTERM stops the loop. Shared uncategorized scan in `scan.ts`.                                                                                           |
+| 2026-04-07 | Docs: [`docs/local-startup.md`](local-startup.md) (scenario-based startup); expanded “Getting back to development”; §4.2 / §8; link from reboot section.                                                                                                                                                                                                                                                                                                    |
 | 2026-04-07 | **P1 complete:** `packages/assistant/src/config.ts` loads optional `actual.config.json` (or `ACTUAL_ASSISTANT_CONFIG` / `ACTUAL_CONFIG_PATH`) merged with env; `--dry-run` / `ACTUAL_DRY_RUN`; writes require explicit category (`ACTUAL_SPIKE_CATEGORY_ID`, `ACTUAL_ASSISTANT_CATEGORY_ID`, or `categoryId` in file) unless `ACTUAL_ASSISTANT_ALLOW_SPIKE_FALLBACK=1` (legacy spike: first non-income + optional reassignment when nothing uncategorized). |
-| 2026-04-08 | P0 complete: spike run against test server; transaction categorized via API; `yarn build:api` ordered after `loot-core` decl build. Design doc added. |
+| 2026-04-08 | P0 complete: spike run against test server; transaction categorized via API; `yarn build:api` ordered after `loot-core` decl build. Design doc added.                                                                                                                                                                                                                                                                                                       |
 
 ### Getting back to development after a reboot
 
@@ -65,13 +66,13 @@ Do this in order when you sit down cold (all **yarn** commands from the **repo r
 
 ## 1. Goals
 
-| Goal | Description |
-|------|-------------|
-| **Low friction** | User spends normally (cards, Venmo, etc.); minimal manual work in Actual for categorization. |
-| **Accurate budget** | Categories in Actual stay correct; assistant applies updates via the official API. |
-| **Improves over time** | Rules + **merchant memory** + user corrections reduce prompts and mistakes. |
-| **Conversational confirmation** | User confirms or corrects categories via **messaging** (e.g. Telegram/Slack), not only the desktop app. |
-| **No LLM** | Categorization uses **existing categories** only: Actual rules, deterministic logic, and learned payee→category memory—not generative AI. |
+| Goal                            | Description                                                                                                                               |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Low friction**                | User spends normally (cards, Venmo, etc.); minimal manual work in Actual for categorization.                                              |
+| **Accurate budget**             | Categories in Actual stay correct; assistant applies updates via the official API.                                                        |
+| **Improves over time**          | Rules + **merchant memory** + user corrections reduce prompts and mistakes.                                                               |
+| **Conversational confirmation** | User confirms or corrects categories via **messaging** (e.g. Telegram/Slack), not only the desktop app.                                   |
+| **No LLM**                      | Categorization uses **existing categories** only: Actual rules, deterministic logic, and learned payee→category memory—not generative AI. |
 
 ---
 
@@ -85,14 +86,14 @@ Do this in order when you sit down cold (all **yarn** commands from the **repo r
 
 ### This assistant (this repo / `packages/assistant`)
 
-| Responsibility | Notes |
-|------------------|--------|
-| Detect work items | New or uncategorized transactions (polling or post-sync). |
-| Propose category | Order: Actual’s own rules (already applied on import) → **memory** (payee/merchant pattern) → **ask user**. |
-| Notify user | Out-of-band messaging (channel TBD). |
-| Apply decisions | `updateTransaction` (and related API calls) via `@actual-app/api`. |
-| Learn | Store corrections; optional promotion to **Actual rules** for stable patterns. |
-| Dedupe / state | Track “already prompted” transaction ids to avoid spam. |
+| Responsibility    | Notes                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| Detect work items | New or uncategorized transactions (polling or post-sync).                                                   |
+| Propose category  | Order: Actual’s own rules (already applied on import) → **memory** (payee/merchant pattern) → **ask user**. |
+| Notify user       | Out-of-band messaging (channel TBD).                                                                        |
+| Apply decisions   | `updateTransaction` (and related API calls) via `@actual-app/api`.                                          |
+| Learn             | Store corrections; optional promotion to **Actual rules** for stable patterns.                              |
+| Dedupe / state    | Track “already prompted” transaction ids to avoid spam.                                                     |
 
 ---
 
@@ -175,14 +176,14 @@ Future handlers may also use: `getRules`, `createRule`, `aqlQuery` / `q`, `sync`
 
 Live status is in **[Progress](#progress)** above.
 
-| Phase | Deliverable |
-|-------|-------------|
-| **P0** | Spike: connect, find uncategorized txn, `updateTransaction` (`packages/assistant/src/spike.ts`) |
+| Phase  | Deliverable                                                                                                                              |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **P0** | Spike: connect, find uncategorized txn, `updateTransaction` (`packages/assistant/src/spike.ts`)                                          |
 | **P1** | Config module; dry-run mode; never assign category without explicit policy (remove “first non-income” blind default for production path) |
-| **P2** | Poll loop + “seen” / “prompted” store |
-| **P3** | Memory store + suggest from memory before asking |
-| **P4** | Messaging adapter (one channel) + confirm/correct loop |
-| **P5** | Optional: push stable memory to Actual rules; metrics/logging |
+| **P2** | Poll loop + “seen” / “prompted” store                                                                                                    |
+| **P3** | Memory store + suggest from memory before asking                                                                                         |
+| **P4** | Messaging adapter (one channel) + confirm/correct loop                                                                                   |
+| **P5** | Optional: push stable memory to Actual rules; metrics/logging                                                                            |
 
 Adjust phases as you learn (e.g. P3 before P4 if you want memory without chat first).
 

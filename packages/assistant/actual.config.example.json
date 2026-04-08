@@ -7,5 +7,7 @@
   "categoryId": "uuid-of-category-for-spike-tests",
   "transactionId": "optional-uuid-to-update-one-transaction-only",
   "dryRun": false,
-  "allowSpikeFallback": false
+  "allowSpikeFallback": false,
+  "pollIntervalMs": 60000,
+  "statePath": "/optional/override/for/assistant-state.json"
 }

@@ -28,10 +28,10 @@ import * as api from '@actual-app/api';
 
 import { loadAssistantConfig, requireConnectionFields } from './config.ts';
 import type { AssistantConfig } from './config.ts';
-
-function dateISO(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+import {
+  defaultTransactionDateRange,
+  findFirstUncategorizedTransaction,
+} from './scan.ts';
 
 async function applyCategory(
   txId: string,
@@ -81,11 +81,7 @@ async function main() {
     const categories = await api.getCategories();
     const categoryId = resolveCategoryId(categories, config);
 
-    const end = new Date();
-    const start = new Date();
-    start.setFullYear(start.getFullYear() - 2);
-    const startStr = dateISO(start);
-    const endStr = dateISO(end);
+    const { startStr, endStr } = defaultTransactionDateRange();
 
     const explicitTx = config.transactionId?.trim();
     if (explicitTx) {
@@ -93,23 +89,19 @@ async function main() {
       return;
     }
 
-    for (const account of openAccounts) {
-      const rows = await api.getTransactions(account.id, startStr, endStr);
-      const tx = rows.find(
-        r =>
-          !r.tombstone &&
-          !r.is_child &&
-          (r.category == null || r.category === ''),
+    const firstUncat = await findFirstUncategorizedTransaction(
+      accounts,
+      startStr,
+      endStr,
+    );
+    if (firstUncat) {
+      await applyCategory(
+        firstUncat.id,
+        categoryId,
+        config,
+        `uncategorized (${firstUncat.accountName})`,
       );
-      if (tx) {
-        await applyCategory(
-          tx.id,
-          categoryId,
-          config,
-          `uncategorized (${account.name})`,
-        );
-        return;
-      }
+      return;
     }
 
     if (!config.allowSpikeFallback) {
@@ -119,7 +111,7 @@ async function main() {
       return;
     }
 
-    const first = await findFirstTransaction(openAccounts, startStr, endStr);
+    const first = await findFirstTransaction(accounts, startStr, endStr);
     if (!first) {
       console.log(
         'No transactions in the last 2 years. Add a transaction in Actual, then run again.',
@@ -169,7 +161,8 @@ async function findFirstTransaction(
   startStr: string,
   endStr: string,
 ): Promise<{ account: (typeof accounts)[0]; tx: { id: string } } | null> {
-  for (const account of accounts) {
+  const openAccounts = accounts.filter(a => !a.closed);
+  for (const account of openAccounts) {
     const rows = await api.getTransactions(account.id, startStr, endStr);
     const tx = rows.find(r => !r.tombstone && !r.is_child);
     if (tx) {

@@ -7,6 +7,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { defaultStatePath } from './state.ts';
+
 export type AssistantConfigFile = {
   serverUrl?: string;
   password?: string;
@@ -19,6 +21,10 @@ export type AssistantConfigFile = {
   dryRun?: boolean;
   /** Dev-only: allow first non-income category + legacy spike reassignment */
   allowSpikeFallback?: boolean;
+  /** Poll loop interval in ms (default 60000); env: ACTUAL_ASSISTANT_POLL_INTERVAL_MS */
+  pollIntervalMs?: number;
+  /** Override path for assistant-state.json; env: ACTUAL_ASSISTANT_STATE_PATH */
+  statePath?: string;
 };
 
 export type AssistantConfig = {
@@ -31,11 +37,31 @@ export type AssistantConfig = {
   categoryId?: string;
   transactionId?: string;
   allowSpikeFallback: boolean;
+  /** Poll interval for `assistant:poll` (milliseconds) */
+  pollIntervalMs: number;
+  /** Resolved path to persisted seen/prompted transaction ids */
+  statePath: string;
 };
 
 function trimEnv(name: string): string | undefined {
   const v = process.env[name]?.trim();
   return v || undefined;
+}
+
+function parsePositiveIntMs(
+  name: string,
+  raw: string | undefined,
+): number | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    throw new Error(
+      `${name} must be a positive integer (milliseconds, e.g. 60000)`,
+    );
+  }
+  return n;
 }
 
 function parseBoolEnv(name: string): boolean | undefined {
@@ -134,6 +160,23 @@ function mergeConfig(
     trimEnv('ACTUAL_ASSISTANT_TRANSACTION_ID') ??
     file.transactionId;
 
+  const pollIntervalMs =
+    parsePositiveIntMs(
+      'ACTUAL_ASSISTANT_POLL_INTERVAL_MS',
+      trimEnv('ACTUAL_ASSISTANT_POLL_INTERVAL_MS'),
+    ) ??
+    (typeof file.pollIntervalMs === 'number' &&
+    Number.isFinite(file.pollIntervalMs) &&
+    file.pollIntervalMs >= 1
+      ? Math.floor(file.pollIntervalMs)
+      : 60_000);
+
+  const statePathOverride =
+    trimEnv('ACTUAL_ASSISTANT_STATE_PATH') ?? file.statePath?.trim();
+  const statePath = statePathOverride
+    ? statePathOverride
+    : defaultStatePath(dataDir);
+
   return {
     serverURL,
     password: password ?? '',
@@ -144,6 +187,8 @@ function mergeConfig(
     categoryId,
     transactionId,
     allowSpikeFallback,
+    pollIntervalMs,
+    statePath,
   };
 }
 
