@@ -1,0 +1,16 @@
+{
+  "name": "@actual-app/assistant",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Sidecar assistant experiments (categorization spike)",
+  "type": "module",
+  "scripts": {
+    "spike": "node --experimental-strip-types ./src/spike.ts"
+  },
+  "dependencies": {
+    "@actual-app/api": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

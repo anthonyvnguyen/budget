@@ -38,6 +38,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@actual-app/assistant@workspace:packages/assistant":
+  version: 0.0.0-use.local
+  resolution: "@actual-app/assistant@workspace:packages/assistant"
+  dependencies:
+    "@actual-app/api": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@actual-app/ci-actions@workspace:packages/ci-actions":
   version: 0.0.0-use.local
   resolution: "@actual-app/ci-actions@workspace:packages/ci-actions"

@@ -1,0 +1,7 @@
+{
+  "serverUrl": "http://localhost:5006",
+  "password": "your-server-password",
+  "syncId": "your-sync-id-from-settings-advanced",
+  "dataDir": "/path/to/local-cache",
+  "encryptionPassword": "only-if-budget-uses-e2e-encryption"
+}
